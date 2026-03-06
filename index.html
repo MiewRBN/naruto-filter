@@ -53,8 +53,8 @@
             mix-blend-mode: screen;
         }
 
-        #n { width: 1600px; } /* Naruto Jutsu */
-        #s { width: 2400px; } /* Sasuke Jutsu */
+        #n { width: 1600px; max-width: 300vw; } /* Naruto Jutsu */
+        #s { width: 2400px; max-width: 400vw; } /* Sasuke Jutsu */
 
         .status-ui {
             position: absolute;
@@ -64,25 +64,67 @@
             z-index: 20;
             text-shadow: 0 0 10px #000;
         }
+
+        /* Start Screen untuk Bypass Keamanan Autoplay HP */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #start-btn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background: #00d4ff;
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 15px #00d4ff;
+        }
     </style>
 </head>
 <body>
+
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <h2>Efek Jutsu Deteksi Tangan</h2>
+        <p>Aplikasi ini membutuhkan akses kamera. Ketuk "Mulai" agar video efek dapat berjalan di HP Anda.</p>
+        <button id="start-btn">Mulai Jutsu</button>
+    </div>
 
     <video id="input_video" class="mirror" playsinline></video>
     <canvas id="output_canvas" class="mirror"></canvas>
     <div class="darkness"></div>
 
     <!-- Video Assets -->
+    <!-- playsinline dan preload sangat penting untuk Mobile -->
     <video id="n" class="jutsu-video" src="assets/naruto.mp4" loop muted playsinline preload="auto"></video>
     <video id="s" class="jutsu-video" src="assets/sasuke.mp4" loop muted playsinline preload="auto"></video>
 
-    <div class="status-ui">Status: Menunggu Kamera...</div>
+    <div class="status-ui">Status: Menunggu Interaksi...</div>
 
     <script>
         const videoElement = document.getElementById('input_video');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
         const statusUi = document.querySelector('.status-ui');
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
         
         const videoN = document.getElementById('n');
         const videoS = document.getElementById('s');
@@ -90,6 +132,26 @@
         // State Power (pwr) untuk transisi halus: [0] Kiri, [1] Kanan
         let pwr = [0, 0];
         let wasOpen = [false, false];
+
+        // Trik Bypass Autoplay Mobile
+        startBtn.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            statusUi.innerText = "Memulai Kamera...";
+
+            // Memancing pemutaran video agar diizinkan oleh browser HP
+            try {
+                let playN = videoN.play();
+                if (playN !== undefined) playN.then(() => videoN.pause()).catch(e => console.log(e));
+                
+                let playS = videoS.play();
+                if (playS !== undefined) playS.then(() => videoS.pause()).catch(e => console.log(e));
+            } catch (err) {
+                console.warn("Autoplay unlock failed", err);
+            }
+
+            // Mulai kamera setelah interaksi sentuhan
+            camera.start();
+        });
 
         /**
          * Logika Deteksi Jari Terbuka (checkOpen)
@@ -106,7 +168,6 @@
                 const distPip = Math.hypot(landmarks[pips[i]].x - wrist.x, landmarks[pips[i]].y - wrist.y);
                 if (distTip > distPip) openCount++;
             }
-            // Return true jika minimal 3 jari terbuka
             return openCount >= 3;
         }
 
@@ -117,9 +178,6 @@
 
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            
-            // Draw original video frame if desired (optional because video is absolute underneath)
-            // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
             let activeHands = { 'Left': false, 'Right': false };
 
@@ -141,7 +199,10 @@
                         if (!wasOpen[pIdx]) {
                             // Tangan baru saja terbuka
                             targetVideo.currentTime = 0;
-                            targetVideo.play();
+                            let playPromise = targetVideo.play();
+                            if (playPromise !== undefined) {
+                                playPromise.catch(error => console.warn("Auto-play dicegah:", error));
+                            }
                             wasOpen[pIdx] = true;
                         }
                         pwr[pIdx] = Math.min(1, pwr[pIdx] + 0.05);
@@ -172,7 +233,6 @@
                             tx = (wrist.x + knuckle.x) / 2;
                             ty = (wrist.y + knuckle.y) / 2;
                             
-                            // Transformasi koordinat ke layar (mirroring handled by 1-tx)
                             targetVideo.style.left = (1 - tx) * window.innerWidth + 'px';
                             targetVideo.style.top = ty * window.innerHeight + 'px';
                         } else {
@@ -228,10 +288,6 @@
             width: 1280,
             height: 720
         });
-
-        window.onload = () => {
-            camera.start();
-        };
 
         // Handle window resize
         window.addEventListener('resize', () => {
